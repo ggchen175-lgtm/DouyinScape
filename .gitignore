@@ -1,0 +1,16 @@
+.gradle/
+**/build/
+.idea/
+local.properties
+*.iml
+*.keystore
+*.jks
+*.p12
+.env
+.env.*
+work/
+outputs/
+*.apk
+*.mp4
+*.log
+unified-geometry.txt

@@ -1,0 +1,15 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="抖境" android:allowBackup="false" android:supportsRtl="true">
+        <meta-data android:name="xposedmodule" android:value="true" />
+        <meta-data android:name="xposeddescription" android:value="抖境 DouyinScape：为抖音提供手势导航沉浸、系统浅深色同步与高刷新率请求，并改善聊天界面及私信通知头像显示。" />
+        <meta-data android:name="xposedminversion" android:value="82" />
+        <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
+        <activity android:name="cn.zhe.douyinsystemtheme.UnifiedSettingsActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <provider android:name="cn.zhe.douyinsystemtheme.UnifiedOptionsProvider" android:authorities="cn.zhe.douyinunified.options" android:exported="true" />
+    </application>
+</manifest>
