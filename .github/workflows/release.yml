@@ -1,0 +1,117 @@
+name: Publish release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-v0.3.17
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      COMMIT_SHA: ${{ github.sha }}
+    steps:
+      - name: Verify and publish the signed 0.3.17 APK
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          repo = os.environ["REPOSITORY"]
+          commit = os.environ["COMMIT_SHA"]
+          token = os.environ["GH_TOKEN"]
+          api = "https://api.github.com/repos/" + repo
+          headers = {
+              "Authorization": "Bearer " + token,
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "DouyinScape-release",
+          }
+
+          def request(url, method="GET", data=None, content_type="application/json"):
+              h = dict(headers)
+              h["Content-Type"] = content_type
+              if isinstance(data, dict):
+                  data = json.dumps(data, ensure_ascii=False).encode("utf-8")
+              with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=h, method=method), timeout=60) as response:
+                  return json.load(response)
+
+          raw = "https://raw.githubusercontent.com/" + repo + "/" + commit + "/downloads/"
+          name = "DouyinScape-0.3.17.apk"
+          with urllib.request.urlopen(raw + name, timeout=60) as response:
+              apk = response.read()
+          with urllib.request.urlopen(raw + "SHA256SUMS", timeout=60) as response:
+              sums = response.read()
+          digest = hashlib.sha256(apk).hexdigest()
+          expected = "a297dbfcf759dfcd8fd4ce93aaa7ad1054404d80707117394317a6df786c87e1"
+          assert digest == expected, "Signed APK digest differs from the verified build"
+          assert sums.decode().split()[0] == digest, "Checksum file mismatch"
+
+          body = """## 抖境 · DouyinScape 0.3.17
+
+          面向抖音 Android 客户端的 Xposed / LSPosed 体验增强模块，提供手势导航沉浸、系统浅深色同步、聊天界面协调与高刷新率请求。
+
+          ### 本次更新
+          - 正式命名为「抖境 · DouyinScape」，更新模块介绍和设置说明。
+          - 整理开源构建入口、MIT 许可证及版本升级适配规则。
+          - 保持 0.3.16 的沉浸、主题与聊天功能实现，本次不修改相关算法。
+
+          ### 兼容与安装
+          - 当前验证基线：抖音 40.8.0、OnePlus 15 / Android 17；保留 40.7.0 适配路径。
+          - 在 LSPosed 中启用并勾选抖音，抖音内主题选择「跟随系统」。
+          - 同签名旧版可覆盖安装，完成后重新打开抖音。
+          - 可选通知头像需要 System UI 作用域；通知堆叠为独立模块。
+          - 未验证的抖音版本、ROM 与远端页面变体不保证兼容。
+
+          下方下载 APK；SHA256SUMS 用于校验。Source code 为该版本源码，不含签名私钥、设备日志和聊天截图。
+          """
+          try:
+              release = request(api + "/releases/tags/v0.3.17")
+          except urllib.error.HTTPError as error:
+              if error.code != 404:
+                  raise
+              release = request(api + "/releases", "POST", {
+                  "tag_name": "v0.3.17",
+                  "target_commitish": commit,
+                  "name": "抖境 · DouyinScape 0.3.17",
+                  "body": body,
+                  "draft": False,
+                  "prerelease": False,
+                  "make_latest": "true",
+              })
+
+          assets = {asset["name"]: asset for asset in request(api + "/releases/" + str(release["id"]) + "/assets")}
+          upload = release["upload_url"].split("{")[0]
+          for filename, payload, mime in [
+              (name, apk, "application/vnd.android.package-archive"),
+              ("SHA256SUMS", sums, "text/plain"),
+          ]:
+              if filename in assets:
+                  existing = assets[filename]
+                  assert existing["size"] == len(payload), "Existing asset size mismatch"
+                  with urllib.request.urlopen(existing["browser_download_url"], timeout=60) as response:
+                      assert hashlib.sha256(response.read()).digest() == hashlib.sha256(payload).digest(), "Existing asset content mismatch"
+                  continue
+              request(upload + "?name=" + urllib.parse.quote(filename), "POST", payload, mime)
+          final = request(api + "/releases/" + str(release["id"]) + "/assets")
+          assert {name, "SHA256SUMS"}.issubset({a["name"] for a in final})
+          print(release["html_url"])
+          print("Verified signed APK SHA-256:", digest)
+          PY
