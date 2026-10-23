@@ -29,7 +29,7 @@
 
 ## 下载
 
-[下载抖境 0.3.17 APK](downloads/DouyinScape-0.3.17.apk) · [SHA-256](downloads/SHA256SUMS)
+[最新版本与更新说明](https://github.com/ggchen175-lgtm/DouyinScape/releases/latest) · [下载 0.3.17 APK](https://github.com/ggchen175-lgtm/DouyinScape/releases/download/v0.3.17/DouyinScape-0.3.17.apk) · [SHA-256](https://github.com/ggchen175-lgtm/DouyinScape/releases/download/v0.3.17/SHA256SUMS)
 
 ## 安装与使用
 
