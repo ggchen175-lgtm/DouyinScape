@@ -36,6 +36,11 @@ internal class HomeTabSafeArea private constructor(
     private val position = IntArray(2)
     private var dirty = true
     private var feed = false
+    /** Bottom anchor of the current feed page: its bottom edge marks where the tab bar starts. */
+    private var anchor: View? = null
+    /** Padding this module added on top of the host's own padding. */
+    private var ourExtra = 0
+    private var nativePadding = parentPadding
     private val layout = ViewTreeObserver.OnGlobalLayoutListener { dirty = true }
     private val attachment = object : View.OnAttachStateChangeListener {
         override fun onViewAttachedToWindow(v: View) = Unit
@@ -52,19 +57,26 @@ internal class HomeTabSafeArea private constructor(
     }
 
     fun sync(): Boolean {
-        if (Build.VERSION.SDK_INT < 30 || !row.isShown || host.height == 0) return true
+        val fullscreen = PageNavigationSafeArea.isPinchPlayback(root)
+        if (Build.VERSION.SDK_INT < 30 || (!row.isShown && !fullscreen) || host.height == 0) return true
         val insets = root.rootView.rootWindowInsets ?: return true
         if (insets.isVisible(WindowInsets.Type.ime())) return true
         val nav = PageNavigationSafeArea.navigationBottom(root)
         if (dirty) {
             dirty = false
-            feed = parent?.let { hasVisibleFeedSpace(it) } == true
+            anchor = parent?.let { findFeedBottomAnchor(it) }
+            feed = anchor != null
         }
         var changed = false
-        // Native list tabs already subtract the expanded tab host height.
-        // Only feed layouts with their own BottomSpace need viewport reservation.
+        // Only top up the part of the gesture band the page has not already
+        // reserved. A ROM or the app itself may have lifted its own bottom
+        // controls already; adding the full inset again would double-shift it.
+        // The fullscreen player owns its controls; release only our home-feed reserve.
+        val reserve = if (fullscreen) 0 else if (feed) bottomDeficit(nav) else 0
         parent?.let { view ->
-            appliedPadding = parentPadding + if (feed) nav else 0
+            nativePadding = (view.paddingBottom - ourExtra).coerceAtLeast(0)
+            ourExtra = reserve
+            appliedPadding = nativePadding + reserve
             if (view.paddingBottom != appliedPadding) {
                 view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, appliedPadding)
                 changed = true
@@ -72,8 +84,12 @@ internal class HomeTabSafeArea private constructor(
             view.clipToPadding = if (feed) false else parentClip
         }
         val params = host.layoutParams
+        // The host must stay tall enough to contain the lifted tab row, so it
+        // always grows by the full inset. Only the parent padding follows the
+        // measured deficit; the margin compensates whatever the parent now pads
+        // so the host keeps sitting on the screen edge.
         appliedHeight = nativeHostHeight + nav
-        appliedMargin = hostMargin - if (feed) nav else 0
+        appliedMargin = hostMargin - (nativePadding + reserve)
         if (params.height != appliedHeight ||
             (params is ViewGroup.MarginLayoutParams && params.bottomMargin != appliedMargin)) {
             params.height = appliedHeight
@@ -101,15 +117,60 @@ internal class HomeTabSafeArea private constructor(
         return true
     }
 
-    private fun hasVisibleFeedSpace(view: View, depth: Int = 0): Boolean {
-        if (!view.isShown || depth > 28 || view === host) return false
-        if (view.javaClass.name == "com.ss.android.ugc.aweme.feed.ui.bottom.BottomSpace" && view.height > 0) {
-            view.getLocationOnScreen(position)
-            return position[0] >= 0 && position[0] < root.width && position[1] < root.height
+    /**
+     * How much of the gesture band the page still covers on its own.
+     * Zero means the page (or its ROM) already lifted its bottom controls,
+     * so the module must leave the layout alone.
+     */
+    private fun bottomDeficit(nav: Int): Int {
+        val target = anchor ?: return nav
+        if (!target.isShown || target.height <= 0) return nav
+        root.rootView.getLocationOnScreen(position)
+        val safeBottom = position[1] + root.rootView.height - nav
+        // Undo our own padding so the next pass reads the page's native position
+        // instead of chasing the shift it just applied.
+        val nativeBottom = bottomOf(target) + ourExtra
+        return (nativeBottom - safeBottom).coerceIn(0, nav)
+    }
+
+    /**
+     * Feed pages reserve their own bottom space; message and profile tabs do not.
+     * Prefer the native BottomSpace, and fall back to the full-width seekbar host
+     * so a renamed container still yields an anchor instead of silently opting out.
+     */
+    private fun findFeedBottomAnchor(container: ViewGroup): View? =
+        findBottomSpace(container) ?: findSeekBarHost(container)
+
+    private fun findBottomSpace(view: View, depth: Int = 0): View? {
+        if (!view.isShown || depth > 28 || view === host) return null
+        if (view.javaClass.name == FEED_BOTTOM_SPACE && view.height > 0 && isOnScreen(view)) return view
+        if (view is ViewGroup) for (i in 0 until view.childCount)
+            findBottomSpace(view.getChildAt(i), depth + 1)?.let { return it }
+        return null
+    }
+
+    private fun findSeekBarHost(view: View, depth: Int = 0, best: View? = null): View? {
+        var found = best
+        if (!view.isShown || depth > 28 || view === host) return found
+        if (view.javaClass.name.contains("SeekBar") && view.height > 0 &&
+            view.width >= root.width * 0.8f && isOnScreen(view)) {
+            // Keep the candidate with the lowest bottom edge: the outer host
+            // spans the page, the thin bar inside it does not.
+            if (found == null || bottomOf(view) > bottomOf(found)) found = view
         }
         if (view is ViewGroup) for (i in 0 until view.childCount)
-            if (hasVisibleFeedSpace(view.getChildAt(i), depth + 1)) return true
-        return false
+            found = findSeekBarHost(view.getChildAt(i), depth + 1, found)
+        return found
+    }
+
+    private fun bottomOf(view: View): Int {
+        view.getLocationOnScreen(position)
+        return position[1] + view.height
+    }
+
+    private fun isOnScreen(view: View): Boolean {
+        view.getLocationOnScreen(position)
+        return position[0] >= 0 && position[0] < root.width && position[1] < root.height
     }
 
     private fun release() {
@@ -119,9 +180,11 @@ internal class HomeTabSafeArea private constructor(
         rowParent?.clipChildren = rowParentClip
         parent?.let { view ->
             if (view.paddingBottom == appliedPadding)
-                view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, parentPadding)
+                view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight,
+                    (view.paddingBottom - ourExtra).coerceAtLeast(0))
             view.clipToPadding = parentClip
         }
+        ourExtra = 0
         host.layoutParams.let { params ->
             if (params.height == appliedHeight) params.height = hostHeight
             (params as? ViewGroup.MarginLayoutParams)?.let { if (it.bottomMargin == appliedMargin) it.bottomMargin = hostMargin }
@@ -135,6 +198,8 @@ internal class HomeTabSafeArea private constructor(
     }
 
     companion object {
+        private const val FEED_BOTTOM_SPACE = "com.ss.android.ugc.aweme.feed.ui.bottom.BottomSpace"
+
         fun bind(root: View, host: ViewGroup, onDetached: () -> Unit): HomeTabSafeArea? {
             val id = host.resources.getIdentifier("root_view", "id", "com.ss.android.ugc.aweme")
             val row = if (id != 0) host.findViewById<ViewGroup>(id) else null

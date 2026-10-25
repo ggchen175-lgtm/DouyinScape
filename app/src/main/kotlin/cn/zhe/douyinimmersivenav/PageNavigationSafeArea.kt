@@ -20,6 +20,8 @@ internal object PageNavigationSafeArea {
         else 0
 
     private val states = WeakHashMap<ViewGroup, State>()
+    fun isPinchPlayback(root: View): Boolean = states[root]?.pinchVideo?.isActive == true
+
     fun syncPublicVideo(root: View, preDraw: Boolean): Boolean? =
         states[root]?.publicVideo?.sync(preDraw)
     private const val TRENDS = "com.ss.android.ugc.aweme.trends.TrendsDetailActivity"
@@ -46,7 +48,10 @@ internal object PageNavigationSafeArea {
         }
         state.layout = ViewTreeObserver.OnGlobalLayoutListener {
             state.dirty = true
+            state.publicVideo.markDirty()
+            state.lynxFooter.markDirty()
             state.decorTransfer?.markDirty()
+            state.pinchVideo.markDirty()
         }
         state.attach = object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) = Unit
@@ -85,6 +90,8 @@ internal object PageNavigationSafeArea {
         var lastSearch = 0L
         var decorTransfer: DecorNavigationInsetTransfer? = null
         val publicVideo = PublicVideoSafeArea(root)
+        val lynxFooter = LynxFooterSafeArea(root)
+        val pinchVideo = PinchVideoSafeArea(root)
         val composeHosts = ArrayList<Padding>()
         var flowViewport: Padding? = null
         var dock: View? = null
@@ -201,7 +208,9 @@ internal object PageNavigationSafeArea {
             val insets = root.rootWindowInsets ?: return false
             val ime = insets.isVisible(WindowInsets.Type.ime())
             val nav = navigationBottom(root)
-            var changed = decorTransfer?.sync() ?: false
+            lynxFooter.sync()
+            val pinchChanged = pinchVideo.sync()
+            var changed = (decorTransfer?.sync() ?: false) || pinchChanged
             changed = (publicVideo.sync(true) == false) || changed
             flowViewport?.takeIf { it.view.isAttachedToWindow && it.view.isShown }?.let { viewport ->
                 root.rootView.getLocationOnScreen(position)
@@ -328,6 +337,8 @@ internal object PageNavigationSafeArea {
 
         fun restore() {
             publicVideo.release()
+            pinchVideo.release()
+            lynxFooter.release()
             flowViewport?.restore()
             decorTransfer?.release()
             composeHosts.forEach { it.restore() }

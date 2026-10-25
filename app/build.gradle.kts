@@ -9,8 +9,8 @@ android {
         applicationId = "cn.zhe.douyinunified"
         minSdk = 23
         targetSdk = 28
-        versionCode = 28
-        versionName = "0.3.17"
+        versionCode = 39
+        versionName = "0.3.27"
     }
     kotlinOptions { jvmTarget = "1.8" }
     // Official signing is configured locally; never commit a keystore or credentials.

@@ -57,7 +57,10 @@ class DouyinImmersiveNavModule {
             })
         app.registerActivityLifecycleCallbacks(
                             object : Application.ActivityLifecycleCallbacks {
-                                override fun onActivityCreated(activity: Activity, state: Bundle?) = Unit
+                                override fun onActivityCreated(activity: Activity, state: Bundle?) {
+                                    if (activity.javaClass.simpleName != "SplashActivity")
+                                        makeWindowEdgeToEdge(activity.window)
+                                }
                                 override fun onActivityStarted(activity: Activity) = attachActivity(activity)
                                 override fun onActivityResumed(activity: Activity) = attachActivity(activity)
                                 override fun onActivityPaused(activity: Activity) = Unit
@@ -244,10 +247,44 @@ class DouyinImmersiveNavModule {
                     logOnce("dialog-$dialogName", "commerce dialog edge-to-edge class=$dialogName")
                 }
                 val decor = XposedHelpers.callMethod(window, "peekDecorView") as? View ?: return
+                attachHybridWindow(window, decor)
                 attachCommentRoot(decor)
                 OrdersEdgeToEdgeController.attach(window, window.context.javaClass.name)
             }
         })
+    }
+
+    /** Reuse window fitting for full-screen native hybrid dialogs, not page titles. */
+    private fun attachHybridWindow(window: Window, decor: View) {
+        if (window.attributes.width != WindowManager.LayoutParams.MATCH_PARENT ||
+            window.attributes.height != WindowManager.LayoutParams.MATCH_PARENT) return
+        var attempts = 0
+        fun contains(view: View, name: String, depth: Int = 0): Boolean {
+            if (depth > 14) return false
+            if (view.javaClass.name == name) return true
+            if (view is ViewGroup) for (i in 0 until view.childCount)
+                if (contains(view.getChildAt(i), name, depth + 1)) return true
+            return false
+        }
+        val listener = object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                val hybrid = contains(decor, "com.bytedance.android.anniex.container.view.RadiusFrameLayout") &&
+                    (contains(decor, "com.bytedance.ies.bullet.kit.web.SSWebView") ||
+                     contains(decor, "com.lynx.tasm.LynxView"))
+                if (hybrid || ++attempts >= 3) {
+                    if (decor.viewTreeObserver.isAlive) decor.viewTreeObserver.removeOnPreDrawListener(this)
+                    if (hybrid) {
+                        makeWindowEdgeToEdge(window)
+                        decor.requestApplyInsets()
+                        decor.requestLayout()
+                        log("fullscreen hybrid dialog uses shared window edge-to-edge; native insets retained")
+                        return false
+                    }
+                }
+                return true
+            }
+        }
+        decor.viewTreeObserver.addOnPreDrawListener(listener)
     }
 
     private fun attachCommentRoot(root: View) {
@@ -593,7 +630,11 @@ class DouyinImmersiveNavModule {
             val listener = ViewTreeObserver.OnGlobalLayoutListener {
                 state.structureDirty = true
                 state.videoOverlays?.markDirty()
-                if (state.liveShopEnabled) state.liveShopNeedsSearch = true
+                if (state.liveShopEnabled) {
+                    state.liveShopNeedsSearch = true
+                    state.lastLiveShopSearchAt = 0L
+                }
+                state.lastLiveSearchAt = 0L
                 try {
                     if (!state.dedicatedBottomPage && state.videoOverlays?.isPrivatePage != true && state.target == null && state.homeSafeArea == null) {
                         val now = SystemClock.uptimeMillis()
@@ -886,7 +927,15 @@ class DouyinImmersiveNavModule {
                 "anchor=${describe(background)} originalTranslationY=${state.originalLiveShopY}")
         }
         val card = state.liveShopCard ?: return
-        val wanted = state.originalLiveShopY - LIVE_SHOP_CARD_LIFT_PX
+        card.getLocationOnScreen(state.liveShopPosition)
+        val nativeBottom = state.liveShopPosition[1] + card.height -
+            (card.translationY - state.originalLiveShopY)
+        val controlsTop = listOfNotNull(state.liveLeft, state.liveRight).minOfOrNull {
+            it.getLocationOnScreen(state.liveShopParentPosition)
+            state.liveShopParentPosition[1].toFloat()
+        } ?: nativeBottom
+        val nativeGap = maxOf(0f, controlsTop - state.liveShift - nativeBottom)
+        val wanted = state.originalLiveShopY + minOf(0f, controlsTop - nativeGap - nativeBottom)
         allowLiveShopOverflow(state, card, wanted)
         if (card.translationY != wanted) {
             card.translationY = wanted
@@ -894,7 +943,7 @@ class DouyinImmersiveNavModule {
         }
         if (state.logLiveShopPin) {
             state.logLiveShopPin = false
-            log("live shop card pinned ${describe(card)} lift=${LIVE_SHOP_CARD_LIFT_PX}px " +
+            log("live shop card pinned ${describe(card)} lift=${state.originalLiveShopY - wanted}px " +
                 "after=${screenBounds(card)} translationY=${card.translationY}")
         }
     }
@@ -925,8 +974,8 @@ class DouyinImmersiveNavModule {
         val y = state.liveShopPosition[1]
         val rootX = state.liveShopRootPosition[0]
         val rootBottom = state.liveShopRootPosition[1] + state.root.height
-        return card.width > state.root.width / 2 && x >= rootX &&
-            x + card.width <= rootX + state.root.width && y > 2200 && y + card.height <= rootBottom
+        return card.width > state.root.width / 4 && x >= rootX &&
+            x + card.width <= rootX + state.root.width && y > state.liveShopRootPosition[1] + state.root.height / 2 && y + card.height <= rootBottom
     }
 
     /** Open only ancestors whose viewport would crop the translated card. Keep its own outline. */
@@ -988,7 +1037,9 @@ class DouyinImmersiveNavModule {
                 var parent = view.parent as? ViewGroup
                 while (parent != null && parent !== state.root) {
                     parent.getLocationOnScreen(state.liveShopPosition)
-                    if (parent.height in 290..330 && state.liveShopPosition[1] > 2200) {
+                    if (parent.width > state.root.width / 4 && parent.height > 0 &&
+                        parent.height < state.root.height / 3 &&
+                        state.liveShopPosition[1] > state.root.height / 2) {
                         if (isLiveShopOnScreen(state, parent)) {
                             if (candidates[priority] == null) candidates[priority] = view to parent
                         } else if (diagnostic) {
@@ -1641,8 +1692,8 @@ class DouyinImmersiveNavModule {
         var videoOverlays: VideoBottomOverlays? = null
         var structureDirty = true
         var dedicatedBottomPage = false
-        val liveShopCandidates = arrayOfNulls<Pair<View, ViewGroup>>(5)
-        val liveShopSeen = IntArray(5)
+        val liveShopCandidates = arrayOfNulls<Pair<View, ViewGroup>>(6)
+        val liveShopSeen = IntArray(6)
         val liveShopSearchStack = ArrayList<View>()
         var lastDockLogFlags = -1
         var lastViewportSearchAt = 0L
@@ -1733,9 +1784,8 @@ class DouyinImmersiveNavModule {
         private const val TARGET_PACKAGE = "com.ss.android.ugc.aweme"
         private const val TAG = "DouyinImmersiveNav"
         private const val NAV_FALLBACK_PX = 56
-        private const val LIVE_SHOP_CARD_LIFT_PX = 24
         private const val LIVE_SHOP_MISS_INTERVAL_MS = 5000L
-        private val LIVE_SHOP_ANCHORS = listOf("by", "iv_close", "tv_title", "wwd", "3of")
+        private val LIVE_SHOP_ANCHORS = listOf("by", "iv_close", "tv_title", "wwd", "3of", "n5k")
         private const val LIVE_SEARCH_INTERVAL_MS = 100L
         private const val COMMENT_SEARCH_INTERVAL_MS = 100L
         private const val COMMENT_PIN_TOLERANCE_PX = 80

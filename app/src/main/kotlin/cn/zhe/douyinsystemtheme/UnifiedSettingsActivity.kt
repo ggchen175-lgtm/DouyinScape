@@ -19,7 +19,7 @@ class UnifiedSettingsActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding((24*dp).toInt(), (32*dp).toInt(), (24*dp).toInt(), (24*dp).toInt())
         }
-        panel.addView(TextView(this).apply { text = "抖境 · DouyinScape 0.3.17"; textSize = 22f })
+        panel.addView(TextView(this).apply { text = "抖境 · DouyinScape ${ModuleVersion.of(this@UnifiedSettingsActivity)}"; textSize = 22f })
         for ((key, label) in listOf("immersive" to "手势导航沉浸", "theme" to "跟随系统浅深色主题", "highRefresh" to "请求屏幕最高刷新率")) {
             panel.addView(CheckBox(this).apply {
                 text = label; textSize = 18f; isChecked = prefs.getBoolean(key, true)

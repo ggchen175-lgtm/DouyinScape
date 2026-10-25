@@ -18,7 +18,7 @@
 
 | 项目 | 当前范围 |
 | --- | --- |
-| 模块版本 | 0.3.17 |
+| 模块版本 | 0.3.27（正式版） |
 | 抖音 | 40.8.0 为当前验证基线；保留 40.7.0 适配路径 |
 | 测试设备 | OnePlus 15 / Android 17 |
 | 运行环境 | 已具备 Xposed API 82 兼容框架，例如 LSPosed |
@@ -29,7 +29,9 @@
 
 ## 下载
 
-[最新版本与更新说明](https://github.com/ggchen175-lgtm/DouyinScape/releases/latest) · [下载 0.3.17 APK](https://github.com/ggchen175-lgtm/DouyinScape/releases/download/v0.3.17/DouyinScape-0.3.17.apk) · [SHA-256](https://github.com/ggchen175-lgtm/DouyinScape/releases/download/v0.3.17/SHA256SUMS)
+本次正式版汇总 0.3.19 以来的优化，详见 [更新说明](docs/RELEASE-0.3.27.md)。
+
+[最新版本与更新说明](https://github.com/ggchen175-lgtm/DouyinScape/releases/latest) · [下载 0.3.27 APK](https://github.com/ggchen175-lgtm/DouyinScape/releases/download/v0.3.27/DouyinScape-0.3.27.apk) · [SHA-256](https://github.com/ggchen175-lgtm/DouyinScape/releases/download/v0.3.27/SHA256SUMS)
 
 ## 安装与使用
 
@@ -58,6 +60,7 @@ Windows 使用 `gradlew.bat :app:assembleDebug`。首次构建需要联网下载
 ## 维护文档
 
 - [版本升级与适配规则](docs/COMPATIBILITY.md)
+- [首页底部安全区：按缺口补偿](docs/HOME_BOTTOM_RESERVE.md)
 - [沉浸布局职责审计](docs/IMMERSIVE_LAYOUT_AUDIT-0.3.14.md)
 - [聊天浮动按钮](docs/FLOATING_BUTTON-0.3.15.md)
 - [系统主题与触摸修正](docs/FOLLOW_SYSTEM_AND_TOUCH-0.3.16.md)

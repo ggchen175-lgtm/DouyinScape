@@ -266,15 +266,38 @@ internal class ChatReplyThemeFix(
     private fun repairInline(root: ViewGroup, wallpaper: Boolean?) {
         val state = states.getOrPut(root) { State(WeakReference(root)) }
         if (wallpaper == null) { restore(state); return }
-        val dock = root.findViewById<ViewGroup>(0x7f0a574c)
-        val slotId = root.resources.getIdentifier("xju", "id", "com.ss.android.ugc.aweme")
-        val closeId = root.resources.getIdentifier("iv_close", "id", "com.ss.android.ugc.aweme")
-        val hintId = root.resources.getIdentifier("tv_hint", "id", "com.ss.android.ugc.aweme")
-        val quote = if (slotId != 0) dock?.findViewById<ViewGroup>(slotId) else null
-        val close = if (closeId != 0) quote?.findViewById<View>(closeId) else null
-        // Video quotes can say "回复自己" and must not depend on a translated text prefix.
-        val active = dock?.isShown == true && quote?.isShown == true && quote.height > 0 &&
-            close?.isShown == true && hintId != 0 && quote.findViewById<View>(hintId) != null
+        // Resolve the live dock in this chat scope. Numeric IDs and quote-slot
+        // names changed between 40.7 and 40.8; the hint/close relationship did not.
+        fun named(scope: View, name: String): View? {
+            val id = scope.resources.getIdentifier(name, "id", "com.ss.android.ugc.aweme")
+            return if (id == 0) null else scope.findViewById(id)
+        }
+        val dock = (named(root, "jak") as? ViewGroup)?.takeIf { it.isShown }
+            ?: (named(root, "msg_et")?.let { field ->
+                var fallbackAncestor = field.parent as? ViewGroup
+                while (fallbackAncestor != null && fallbackAncestor !== root) {
+                    if (fallbackAncestor.width >= root.width * 3 / 4 &&
+                        named(fallbackAncestor, "iv_close")?.isShown == true &&
+                        named(fallbackAncestor, "tv_hint")?.isShown == true) return@let fallbackAncestor
+                    fallbackAncestor = fallbackAncestor.parent as? ViewGroup
+                }
+                null
+            })
+        val hint = dock?.let { named(it, "tv_hint") }
+        val close = dock?.let { named(it, "iv_close") }
+        var quote: ViewGroup? = null
+        if (dock != null && hint?.isShown == true && close?.isShown == true) {
+            var candidate = hint.parent as? ViewGroup
+            while (candidate != null && candidate !== dock) {
+                if (candidate.width >= dock.width * 3 / 4 && candidate.height > 0 &&
+                    named(candidate, "iv_close") === close) {
+                    quote = candidate
+                    break
+                }
+                candidate = candidate.parent as? ViewGroup
+            }
+        }
+        val active = dock?.isShown == true && quote?.isShown == true
         if (!active || dock == null || quote == null) {
             restore(state); state.panel.clear(); state.logged = false; return
         }
@@ -304,8 +327,20 @@ internal class ChatReplyThemeFix(
             }
             state.applied[v] = replacement; state.appliedColors[v] = value; v.background = replacement
         }
-        val inputId = root.resources.getIdentifier("bmj", "id", "com.ss.android.ugc.aweme")
-        val input = if (inputId == 0) null else dock.findViewById<View>(inputId)
+        // Keep the native input shape; locate its rounded backing from the
+        // editor ancestry instead of a version-specific container name.
+        var input: View? = null
+        var inputParent = named(dock, "msg_et")?.parent as? View
+        while (inputParent != null && inputParent !== dock) {
+            val drawable = inputParent.background as? GradientDrawable
+            if (drawable != null && inputParent.width >= dock.width * 3 / 4 &&
+                android.os.Build.VERSION.SDK_INT >= 24 &&
+                (drawable.cornerRadius > 0f || drawable.cornerRadii != null)) {
+                input = inputParent
+                break
+            }
+            inputParent = inputParent.parent as? View
+        }
         fun visit(v: View) {
             if (!v.isShown) return
             if (v === input) {

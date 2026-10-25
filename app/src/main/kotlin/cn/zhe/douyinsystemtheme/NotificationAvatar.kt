@@ -173,8 +173,13 @@ internal object NotificationAvatar {
             }
         }
         applyIcons()
+        XposedHelpers.setAdditionalInstanceField(row, "cn.zhe.notification.prepare_artwork", Runnable {
+            // A collapsed stack renders this child's content without dispatching the
+            // hidden row. Reapply only this live state's already loaded artwork.
+            if (states[row] === state) applyIcons()
+        })
         if (state.listener == null && row.viewTreeObserver.isAlive) {
-            val listener = ViewTreeObserver.OnPreDrawListener { if (state.row.get()?.isShown == true) applyIcons(); true }
+            val listener = ViewTreeObserver.OnPreDrawListener { if (state.row.get()?.isAttachedToWindow == true && states[row] === state) applyIcons(); true }
             state.listener = listener; row.viewTreeObserver.addOnPreDrawListener(listener)
             row.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(v: View) = Unit
@@ -187,6 +192,7 @@ internal object NotificationAvatar {
     }
     private fun release(row: ViewGroup) {
         val state = states.remove(row) ?: return
+        XposedHelpers.removeAdditionalInstanceField(row, "cn.zhe.notification.prepare_artwork")
         if (row.viewTreeObserver.isAlive) state.listener?.let(row.viewTreeObserver::removeOnPreDrawListener)
         for (saved in state.icons) saved.view.get()?.let {
             if (it.drawable === saved.replacement) {

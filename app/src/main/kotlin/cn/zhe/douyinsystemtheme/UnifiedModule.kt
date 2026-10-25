@@ -44,7 +44,7 @@ class UnifiedModule : IXposedHookLoadPackage {
                     UnifiedOptions.load(app)
                     if (UnifiedOptions.immersive || UnifiedOptions.theme) NativeChatRegistry.install(param.classLoader)
                     if (UnifiedOptions.immersive) ChatListInsets.install(param.classLoader)
-                    XposedBridge.log("[DouyinUnified] loaded 0.3.17 nav=${UnifiedOptions.immersive} theme=${UnifiedOptions.theme} highRefresh=${UnifiedOptions.highRefresh}; native-page-navigation-safe-area")
+                    XposedBridge.log("[DouyinUnified] loaded ${ModuleVersion.of(app)} nav=${UnifiedOptions.immersive} theme=${UnifiedOptions.theme} highRefresh=${UnifiedOptions.highRefresh}; native-page-navigation-safe-area")
                     if (UnifiedOptions.immersive) try {
                         cn.zhe.douyinimmersivenav.DouyinImmersiveNavModule().start(param, app)
                     } catch (e: Throwable) { XposedBridge.log("[DouyinUnified] navigation initialization failed: $e") }

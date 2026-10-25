@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: publish-v0.3.17
+  group: publish-v0.3.27
   cancel-in-progress: false
 
 jobs:
@@ -23,7 +23,7 @@ jobs:
       REPOSITORY: ${{ github.repository }}
       COMMIT_SHA: ${{ github.sha }}
     steps:
-      - name: Verify and publish the signed 0.3.17 APK
+      - name: Verify and publish the signed 0.3.27 APK
         shell: bash
         run: |
           python3 - <<'PY'
@@ -54,43 +54,37 @@ jobs:
                   return json.load(response)
 
           raw = "https://raw.githubusercontent.com/" + repo + "/" + commit + "/downloads/"
-          name = "DouyinScape-0.3.17.apk"
+          name = "DouyinScape-0.3.27.apk"
           with urllib.request.urlopen(raw + name, timeout=60) as response:
               apk = response.read()
           with urllib.request.urlopen(raw + "SHA256SUMS", timeout=60) as response:
               sums = response.read()
           digest = hashlib.sha256(apk).hexdigest()
-          expected = "a297dbfcf759dfcd8fd4ce93aaa7ad1054404d80707117394317a6df786c87e1"
+          expected = "c53ff809ddca63a0cb3ea5371d2be32c87e84860b1d462229592d294d07df658"
           assert digest == expected, "Signed APK digest differs from the verified build"
           assert sums.decode().split()[0] == digest, "Checksum file mismatch"
 
-          body = """## 抖境 · DouyinScape 0.3.17
-
-          面向抖音 Android 客户端的 Xposed / LSPosed 体验增强模块，提供手势导航沉浸、系统浅深色同步、聊天界面协调与高刷新率请求。
-
-          ### 本次更新
-          - 正式命名为「抖境 · DouyinScape」，更新模块介绍和设置说明。
-          - 整理开源构建入口、MIT 许可证及版本升级适配规则。
-          - 保持 0.3.16 的沉浸、主题与聊天功能实现，本次不修改相关算法。
-
-          ### 兼容与安装
-          - 当前验证基线：抖音 40.8.0、OnePlus 15 / Android 17；保留 40.7.0 适配路径。
-          - 在 LSPosed 中启用并勾选抖音，抖音内主题选择「跟随系统」。
-          - 同签名旧版可覆盖安装，完成后重新打开抖音。
-          - 可选通知头像需要 System UI 作用域；通知堆叠为独立模块。
-          - 未验证的抖音版本、ROM 与远端页面变体不保证兼容。
-
-          下方下载 APK；SHA256SUMS 用于校验。Source code 为该版本源码，不含签名私钥、设备日志和聊天截图。
+          body = """# 抖境 · DouyinScape 0.3.27
+          
+          本次汇总 0.3.19 至最终版的优化：
+          
+          - 优化聊天回复框的深色主题与布局，修复推荐表情被遮挡。
+          - 优化视频放大播放、搜索、历史和稍后再看页面的沉浸与底栏避让，改善入场衔接。
+          - 优化直播入场沉浸，以及横向、竖向商品卡片与聊天栏的避让。
+          - 优化抖音月付与订单待使用页面，复用相同容器规则，减少重复适配。
+          
+          验证基线：抖音 40.8.0、OnePlus 15 / Android 17；其他机型及远端页面变体仍需验证。
+          同签名旧版可覆盖安装，更新后重新打开抖音。
           """
           try:
-              release = request(api + "/releases/tags/v0.3.17")
+              release = request(api + "/releases/tags/v0.3.27")
           except urllib.error.HTTPError as error:
               if error.code != 404:
                   raise
               release = request(api + "/releases", "POST", {
-                  "tag_name": "v0.3.17",
+                  "tag_name": "v0.3.27",
                   "target_commitish": commit,
-                  "name": "抖境 · DouyinScape 0.3.17",
+                  "name": "抖境 · DouyinScape 0.3.27",
                   "body": body,
                   "draft": False,
                   "prerelease": False,
